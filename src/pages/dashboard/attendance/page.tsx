@@ -1,312 +1,164 @@
-import { useState } from "react";
-import { Calendar, Check, X, Clock, TrendingUp, Loader2 } from "lucide-react";
+import { useState, useEffect, useMemo } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { Loader2, Plus, Save } from "lucide-react";
+import type { ColumnDef } from "@tanstack/react-table";
+
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
-import { useAttendance } from "@/hooks";
+import { Label } from "@/components/ui/label";
+import { DataTable } from "@/components/ui/data-table";
+
+import { useAttendance, useStudents, useSubjects } from "@/hooks";
 import type { Attendance } from "@/api";
+const formSchema = z.object({
+  student_id: z.string().min(1),
+  subject_name: z.string().min(1),
+  visit_day: z.string().min(1),
+  visited: z.boolean(),
+});
 
 export function AttendancePage() {
-  const [selectedDate] = useState(new Date().toLocaleDateString());
-  const { attendance, isLoading, error } = useAttendance();
+  const { students } = useStudents();
+  const { subjects } = useSubjects();
+  const { attendance, isLoading, getByStudentId, getBySubjectName, createAttendance, clearAttendance } = useAttendance();
 
-  // Group attendance by student
-  const studentAttendance = attendance.reduce(
-    (acc, record) => {
-      const key = record.student_id;
-      if (!acc[key]) {
-        acc[key] = {
-          student_id: record.student_id,
-          name: `${record.student_firstname} ${record.student_surname}`,
-          records: [],
-        };
-      }
-      acc[key].records.push(record);
-      return acc;
+  const [activeTab, setActiveTab] = useState("student");
+  const [filterId, setFilterId] = useState(""); 
+  const [showForm, setShowForm] = useState(false);
+  const form = useForm({
+    resolver: zodResolver(formSchema),
+    defaultValues: { student_id: "", subject_name: "", visit_day: new Date().toISOString().split("T")[0], visited: true }
+  });
+  useEffect(() => {
+    clearAttendance();
+    setFilterId("");
+  }, [activeTab, clearAttendance]);
+
+  useEffect(() => {
+    if (!filterId) return;
+    activeTab === "student" ? getByStudentId(Number(filterId)) : getBySubjectName(filterId);
+  }, [filterId, activeTab]);
+
+  const onSubmit = async (data: z.infer<typeof formSchema>) => {
+    const [y, m, d] = data.visit_day.split("-");
+    await createAttendance({
+      student_id: Number(data.student_id),
+      subject_name: data.subject_name,
+      visit_day: `${d}.${m}.${y}`,
+      visited: data.visited,
+    });
+    setShowForm(false);
+    form.reset({ ...data, student_id: "", subject_name: "" });
+    if (activeTab === "student" && filterId === data.student_id) getByStudentId(Number(filterId));
+    if (activeTab === "subject" && filterId === data.subject_name) getBySubjectName(filterId);
+  };
+  const columns = useMemo<ColumnDef<Attendance>[]>(() => [
+    {
+      accessorKey: "visit_day",
+      header: "Date",
+      cell: ({ row }) => new Date(row.original.visit_day).toLocaleDateString(),
     },
-    {} as Record<number, { student_id: number; name: string; records: Attendance[] }>
-  );
-
-  const studentList = Object.values(studentAttendance);
-  const totalStudents = studentList.length;
-  const totalRecords = attendance.length;
-  const presentCount = attendance.filter((r) => r.visited).length;
-  const averageAttendance = totalRecords > 0 ? (presentCount / totalRecords) * 100 : 0;
-
-  const getInitials = (name: string) => {
-    return name
-      .split(" ")
-      .map((n) => n[0])
-      .join("")
-      .toUpperCase();
-  };
-
-  const getAttendanceColor = (percentage: number) => {
-    if (percentage >= 90) return "text-green-600";
-    if (percentage >= 75) return "text-yellow-600";
-    return "text-red-600";
-  };
-
-
-  if (isLoading) {
-    return (
-      <div className="flex h-96 items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="flex h-96 items-center justify-center">
-        <div className="text-center">
-          <p className="text-destructive">{error}</p>
-          <p className="text-sm text-muted-foreground mt-2">
-            Make sure the backend server is running
-          </p>
-        </div>
-      </div>
-    );
-  }
+    {
+      id: "target", 
+      header: activeTab === "student" ? "Subject" : "Student",
+      cell: ({ row }) => {
+        if (activeTab === "student") return row.original.subject_name;
+        return students.find(s => s.id === row.original.student_id)?.name || `#${row.original.student_id}`;
+      }
+    },
+    {
+      accessorKey: "visited",
+      header: "Status",
+      cell: ({ row }) => (
+        <Badge variant={row.original.visited ? "default" : "destructive"}>
+          {row.original.visited ? "Present" : "Absent"}
+        </Badge>
+      ),
+    },
+  ], [activeTab, students]);
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Attendance</h1>
-          <p className="text-muted-foreground">
-            Track and manage student attendance records
-          </p>
-        </div>
-        <Button>
-          <Calendar className="mr-2 h-4 w-4" />
-          Mark Attendance
+      <div className="flex justify-between items-center">
+        <h2 className="text-3xl font-bold tracking-tight">Attendance</h2>
+        <Button onClick={() => setShowForm(!showForm)}>
+          {showForm ? "Cancel" : <><Plus className="mr-2 h-4 w-4" /> Mark Attendance</>}
         </Button>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Today's Date</CardTitle>
-            <Calendar className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{selectedDate}</div>
-            <p className="text-xs text-muted-foreground">Current tracking day</p>
+      {showForm && (
+        <Card className="bg-muted/50">
+          <CardContent className="pt-6">
+            <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-wrap gap-4 items-end">
+              <div className="w-[200px] space-y-2">
+                <Label>Student</Label>
+                <Select onValueChange={v => form.setValue("student_id", v)}>
+                  <SelectTrigger><SelectValue placeholder="Select Student" /></SelectTrigger>
+                  <SelectContent>{students.map(s => <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+              <div className="w-[200px] space-y-2">
+                <Label>Subject</Label>
+                <Select onValueChange={v => form.setValue("subject_name", v)}>
+                  <SelectTrigger><SelectValue placeholder="Select Subject" /></SelectTrigger>
+                  <SelectContent>{subjects.map(s => <SelectItem key={s.name} value={s.name}>{s.name}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+              <div className="w-[150px] space-y-2">
+                <Label>Date</Label>
+                <Input type="date" {...form.register("visit_day")} />
+              </div>
+              <div className="w-[150px] space-y-2">
+                <Label>Status</Label>
+                <Select defaultValue="true" onValueChange={v => form.setValue("visited", v === "true")}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="true">Present</SelectItem>
+                        <SelectItem value="false">Absent</SelectItem>
+                    </SelectContent>
+                </Select>
+              </div>
+              <Button type="submit" disabled={form.formState.isSubmitting}>
+                {form.formState.isSubmitting ? <Loader2 className="animate-spin" /> : <Save className="mr-2 h-4 w-4" />} Save
+              </Button>
+            </form>
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
-              Average Attendance
-            </CardTitle>
-            <TrendingUp className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div
-              className={cn(
-                "text-2xl font-bold",
-                getAttendanceColor(averageAttendance)
-              )}
-            >
-              {averageAttendance.toFixed(1)}%
-            </div>
-            <p className="text-xs text-muted-foreground">Overall attendance rate</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
-              Total Records
-            </CardTitle>
-            <Check className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{totalRecords}</div>
-            <p className="text-xs text-muted-foreground">
-              Attendance entries
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Students Tracked</CardTitle>
-            <Clock className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{totalStudents}</div>
-            <p className="text-xs text-muted-foreground">Unique students</p>
-          </CardContent>
-        </Card>
-      </div>
+      )}
 
       <Card>
-        <CardHeader>
-          <CardTitle>Attendance Records</CardTitle>
-          <CardDescription>
-            All attendance records from the database
-          </CardDescription>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle>Report</CardTitle>
+          <div className="flex gap-2">
+            <Tabs value={activeTab} onValueChange={setActiveTab}>
+              <TabsList>
+                <TabsTrigger value="student">By Student</TabsTrigger>
+                <TabsTrigger value="subject">By Subject</TabsTrigger>
+              </TabsList>
+            </Tabs>
+            <Select onValueChange={setFilterId} value={filterId}>
+              <SelectTrigger className="w-[200px]"><SelectValue placeholder="Select Filter..." /></SelectTrigger>
+              <SelectContent>
+                {activeTab === "student" 
+                  ? students.map(s => <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>)
+                  : subjects.map(s => <SelectItem key={s.name} value={s.name}>{s.name}</SelectItem>)
+                }
+              </SelectContent>
+            </Select>
+          </div>
         </CardHeader>
         <CardContent>
-          {attendance.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16">
-              <Calendar className="h-12 w-12 text-muted-foreground mb-4" />
-              <p className="text-muted-foreground">No attendance records found</p>
-              <p className="text-sm text-muted-foreground">
-                Create attendance records using the backend API
-              </p>
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Student</TableHead>
-                  <TableHead>Subject</TableHead>
-                  <TableHead>Date</TableHead>
-                  <TableHead className="text-center">Status</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {attendance.map((record) => (
-                  <TableRow key={record.id}>
-                    <TableCell>
-                      <div className="flex items-center gap-3">
-                        <Avatar className="h-8 w-8">
-                          <AvatarFallback className="bg-primary/10 text-primary text-xs">
-                            {getInitials(`${record.student_firstname} ${record.student_surname}`)}
-                          </AvatarFallback>
-                        </Avatar>
-                        <span className="font-medium">
-                          {record.student_firstname} {record.student_surname}
-                        </span>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{record.subject_name}</Badge>
-                    </TableCell>
-                    <TableCell>
-                      {new Date(record.visit_day).toLocaleDateString()}
-                    </TableCell>
-                    <TableCell className="text-center">
-                      {record.visited ? (
-                        <div className="flex justify-center">
-                          <div className="flex h-6 w-6 items-center justify-center rounded-full bg-green-100">
-                            <Check className="h-4 w-4 text-green-600" />
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="flex justify-center">
-                          <div className="flex h-6 w-6 items-center justify-center rounded-full bg-red-100">
-                            <X className="h-4 w-4 text-red-600" />
-                          </div>
-                        </div>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
+          {isLoading ? <div className="p-8 flex justify-center"><Loader2 className="animate-spin" /></div> 
+           : <DataTable columns={columns} data={attendance} />
+          }
         </CardContent>
       </Card>
-
-      <div className="grid gap-4 md:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Attendance by Subject</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {(() => {
-              const subjects = [...new Set(attendance.map((r) => r.subject_name))];
-              if (subjects.length === 0) {
-                return (
-                  <p className="text-sm text-muted-foreground text-center py-4">
-                    No subjects found
-                  </p>
-                );
-              }
-              return subjects.map((subject) => {
-                const subjectRecords = attendance.filter(
-                  (r) => r.subject_name === subject
-                );
-                const presentCount = subjectRecords.filter((r) => r.visited).length;
-                const percentage = (presentCount / subjectRecords.length) * 100;
-
-                return (
-                  <div key={subject} className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="font-medium">{subject}</span>
-                      <span
-                        className={cn(
-                          "font-semibold",
-                          getAttendanceColor(percentage)
-                        )}
-                      >
-                        {percentage.toFixed(1)}%
-                      </span>
-                    </div>
-                    <div className="h-2 rounded-full bg-secondary">
-                      <div
-                        className={cn(
-                          "h-2 rounded-full transition-all",
-                          percentage >= 90
-                            ? "bg-green-500"
-                            : percentage >= 75
-                            ? "bg-yellow-500"
-                            : "bg-red-500"
-                        )}
-                        style={{ width: `${percentage}%` }}
-                      />
-                    </div>
-                  </div>
-                );
-              });
-            })()}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Quick Stats</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center justify-between border-b pb-2">
-              <span className="text-muted-foreground">Total Records</span>
-              <span className="font-semibold">{totalRecords}</span>
-            </div>
-            <div className="flex items-center justify-between border-b pb-2">
-              <span className="text-muted-foreground">Students Tracked</span>
-              <span className="font-semibold">{totalStudents}</span>
-            </div>
-            <div className="flex items-center justify-between border-b pb-2">
-              <span className="text-muted-foreground">Total Present</span>
-              <span className="font-semibold text-green-600">{presentCount}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">Total Absent</span>
-              <span className="font-semibold text-red-600">
-                {totalRecords - presentCount}
-              </span>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
     </div>
   );
 }

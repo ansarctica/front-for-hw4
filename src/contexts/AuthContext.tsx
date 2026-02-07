@@ -1,66 +1,46 @@
-import {
-  createContext,
-  useContext,
-  useState,
-  useEffect,
-  type ReactNode,
-} from "react";
-import { authApi } from "@/api";
-
-interface User {
-  id: number;
-  email: string;
-}
+import { createContext, useContext, type ReactNode } from "react";
+import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
+import { authApi, type User, type LoginDto, type RegisterDto, type AuthResponse } from "@/api";
 
 interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string) => Promise<void>;
+  login: (data: LoginDto) => Promise<AuthResponse>;
+  register: (data: RegisterDto) => Promise<AuthResponse>;
   logout: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-
-  useEffect(() => {
-    const storedUser = localStorage.getItem("user");
-    if (storedUser) {
-      setUser(JSON.parse(storedUser));
-    }
-    setIsLoading(false);
-  }, []);
-
-  const login = async (email: string, password: string) => {
-    const response = await authApi.login({ email, password });
-    const userData: User = {
-      id: response.user.id,
-      email: response.user.email,
-    };
-    setUser(userData);
-    localStorage.setItem("user", JSON.stringify(userData));
-    localStorage.setItem("token", response.access_token);
-  };
-
-  const register = async (email: string, password: string) => {
-    const response = await authApi.register({ email, password });
-    const userData: User = {
-      id: response.user.id,
-      email: response.user.email,
-    };
-    setUser(userData);
-    localStorage.setItem("user", JSON.stringify(userData));
-    localStorage.setItem("token", response.access_token);
-  };
+  const queryClient = useQueryClient();
+  const token = localStorage.getItem("token");
+  const { data: user = null, isLoading } = useQuery({
+    queryKey: ["me"],
+    queryFn: authApi.getMe,
+    enabled: !!token, 
+    retry: false,
+  });
+  const loginMutation = useMutation({
+    mutationFn: authApi.login,
+    onSuccess: (response) => {
+      localStorage.setItem("token", response.token);
+      queryClient.setQueryData(["me"], response.user);
+    },
+  });
+  const registerMutation = useMutation({
+    mutationFn: authApi.register,
+    onSuccess: (response) => {
+      localStorage.setItem("token", response.token);
+      queryClient.setQueryData(["me"], response.user);
+    },
+  });
 
   const logout = () => {
-    setUser(null);
-    localStorage.removeItem("user");
     localStorage.removeItem("token");
+    queryClient.setQueryData(["me"], null);
+    queryClient.removeQueries({ queryKey: ["me"] });
   };
 
   return (
@@ -69,8 +49,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user,
         isAuthenticated: !!user,
         isLoading,
-        login,
-        register,
+        login: (data) => loginMutation.mutateAsync(data),
+        register: (data) => registerMutation.mutateAsync(data),
         logout,
       }}
     >

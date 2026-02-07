@@ -1,69 +1,64 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useCallback } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   attendanceApi,
-  type Attendance,
   type CreateAttendanceDto,
-  type UpdateAttendanceDto,
 } from "@/api";
 
+type AttendanceFilter = 
+  | { type: 'student'; id: number } 
+  | { type: 'subject'; name: string }
+  | { type: 'none' };
+
 export function useAttendance() {
-  const [attendance, setAttendance] = useState<Attendance[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+  const [filter, setFilter] = useState<AttendanceFilter>({ type: 'none' });
+  const { 
+    data: rawAttendance,
+    isLoading, 
+    error 
+  } = useQuery({
+    queryKey: ['attendance', filter],
+    queryFn: async () => {
+      if (filter.type === 'student') {
+        return await attendanceApi.getAll({ student_id: filter.id });
+      }
+      if (filter.type === 'subject') {
+        return await attendanceApi.getAll({ subject_name: filter.name });
+      }
+      return []; 
+    },
+    enabled: filter.type !== 'none',
+  });
+  const attendance = rawAttendance || [];
+  const createMutation = useMutation({
+    mutationFn: (data: CreateAttendanceDto) => attendanceApi.create(data),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['attendance'] }),
+  });
 
-  const fetchAttendance = useCallback(async () => {
-    try {
-      setIsLoading(true);
-      setError(null);
-      const data = await attendanceApi.getAll();
-      setAttendance(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to fetch attendance");
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+  const updateMutation = useMutation({
+    mutationFn: ({ id, visited }: { id: number; visited: boolean }) => 
+      attendanceApi.update(id, { visited }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['attendance'] }),
+  });
 
-  useEffect(() => {
-    fetchAttendance();
-  }, [fetchAttendance]);
-
-  const getByStudentId = async (studentId: number) => {
-    return attendanceApi.getByStudentId(studentId);
-  };
-
-  const getBySubjectId = async (subjectId: number) => {
-    return attendanceApi.getBySubjectId(subjectId);
-  };
-
-  const createAttendance = async (data: CreateAttendanceDto) => {
-    const newRecord = await attendanceApi.create(data);
-    setAttendance((prev) => [...prev, newRecord]);
-    return newRecord;
-  };
-
-  const updateAttendance = async (id: number, data: UpdateAttendanceDto) => {
-    const updated = await attendanceApi.update(id, data);
-    setAttendance((prev) =>
-      prev.map((record) => (record.id === id ? updated : record))
-    );
-    return updated;
-  };
-
-  const deleteAttendance = async (id: number) => {
-    await attendanceApi.delete(id);
-    setAttendance((prev) => prev.filter((record) => record.id !== id));
-  };
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => attendanceApi.delete(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['attendance'] }),
+  });
+  const clearAttendance = useCallback(() => setFilter({ type: 'none' }), []);
+  const getByStudentId = useCallback(async (id: number) => setFilter({ type: 'student', id }), []);
+  const getBySubjectName = useCallback(async (name: string) => setFilter({ type: 'subject', name }), []);
 
   return {
     attendance,
     isLoading,
-    error,
-    refetch: fetchAttendance,
+    error: error ? (error as Error).message : null,
+    clearAttendance,
     getByStudentId,
-    getBySubjectId,
-    createAttendance,
-    updateAttendance,
-    deleteAttendance,
+    getBySubjectName,
+    createAttendance: (data: CreateAttendanceDto) => createMutation.mutateAsync(data),
+    updateAttendance: (id: number, visited: boolean) => updateMutation.mutateAsync({ id, visited }),
+    deleteAttendance: (id: number) => deleteMutation.mutateAsync(id),
   };
 }

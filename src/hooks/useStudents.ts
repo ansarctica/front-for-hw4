@@ -1,52 +1,59 @@
-import { useState, useEffect, useCallback } from "react";
-import { studentsApi, type Student, type CreateStudentDto, type UpdateStudentDto } from "@/api";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { 
+  studentsApi, 
+  type CreateStudentDto, 
+  type UpdateStudentDto 
+} from "@/api";
 
 export function useStudents() {
-  const [students, setStudents] = useState<Student[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+  const { 
+    data: students = [], 
+    isLoading, 
+    error,
+    refetch 
+  } = useQuery({
+    queryKey: ['students'],
+    queryFn: () => studentsApi.getAll(),
+  });
+  const createMutation = useMutation({
+    mutationFn: (data: CreateStudentDto) => studentsApi.create(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['students'] });
+    },
+  });
 
-  const fetchStudents = useCallback(async () => {
-    try {
-      setIsLoading(true);
-      setError(null);
-      const data = await studentsApi.getAll();
-      setStudents(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to fetch students");
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: UpdateStudentDto }) => 
+      studentsApi.update(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['students'] });
+    },
+  });
 
-  useEffect(() => {
-    fetchStudents();
-  }, [fetchStudents]);
-
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => studentsApi.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['students'] });
+    },
+  });
   const createStudent = async (data: CreateStudentDto) => {
-    const newStudent = await studentsApi.create(data);
-    setStudents((prev) => [...prev, newStudent]);
-    return newStudent;
+    return await createMutation.mutateAsync(data);
   };
 
   const updateStudent = async (id: number, data: UpdateStudentDto) => {
-    const updated = await studentsApi.update(id, data);
-    setStudents((prev) =>
-      prev.map((student) => (student.id === id ? updated : student))
-    );
-    return updated;
+    return await updateMutation.mutateAsync({ id, data });
   };
 
   const deleteStudent = async (id: number) => {
-    await studentsApi.delete(id);
-    setStudents((prev) => prev.filter((student) => student.id !== id));
+    return await deleteMutation.mutateAsync(id);
   };
 
   return {
     students,
     isLoading,
-    error,
-    refetch: fetchStudents,
+    error: error ? (error as Error).message : null,
+    refetch,
     createStudent,
     updateStudent,
     deleteStudent,

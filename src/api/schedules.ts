@@ -1,23 +1,15 @@
-import { apiClient } from "./client";
-import type {
-  GroupSchedule,
-  CreateGroupScheduleDto,
-  UpdateGroupScheduleDto,
-} from "./types";
+import { apiClient, buildQuery } from "./client";
+import type { Schedule, CreateScheduleDto } from "./types";
 
 export const schedulesApi = {
-  getAll: () => apiClient.get<GroupSchedule[]>("/group-schedules"),
+  getAll: (params: { group_id?: number } = {}) => 
+    apiClient.get<Schedule[]>(`/schedules${buildQuery(params)}`),
 
-  getById: (id: number) => apiClient.get<GroupSchedule>(`/group-schedules/${id}`),
+  create: (data: CreateScheduleDto) =>
+    apiClient.post<Schedule>("/schedules", data),
 
-  getByGroupName: (groupName: string) =>
-    apiClient.get<GroupSchedule>(`/group-schedules/group/${encodeURIComponent(groupName)}`),
+  update: (id: number, data: Partial<CreateScheduleDto>) =>
+    apiClient.patch<Schedule>(`/schedules/${id}`, data),
 
-  create: (data: CreateGroupScheduleDto) =>
-    apiClient.post<GroupSchedule>("/group-schedules", data),
-
-  update: (id: number, data: UpdateGroupScheduleDto) =>
-    apiClient.patch<GroupSchedule>(`/group-schedules/${id}`, data),
-
-  delete: (id: number) => apiClient.delete<void>(`/group-schedules/${id}`),
+  delete: (id: number) => apiClient.delete<void>(`/schedules/${id}`),
 };

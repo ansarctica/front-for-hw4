@@ -1,5 +1,5 @@
 import { apiClient } from "./client";
-import type { AuthResponse, LoginDto, RegisterDto } from "./types";
+import type { AuthResponse, LoginDto, RegisterDto, User } from "./types";
 
 export const authApi = {
   login: (data: LoginDto) =>
@@ -7,4 +7,7 @@ export const authApi = {
 
   register: (data: RegisterDto) =>
     apiClient.post<AuthResponse>("/auth/register", data),
+
+  getMe: () => 
+    apiClient.get<User>("/users/me"),
 };

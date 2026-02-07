@@ -1,62 +1,57 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   schedulesApi,
-  type GroupSchedule,
-  type CreateGroupScheduleDto,
-  type UpdateGroupScheduleDto,
+  type CreateScheduleDto,
 } from "@/api";
 
 export function useSchedules() {
-  const [schedules, setSchedules] = useState<GroupSchedule[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+  const [filterGroupId, setFilterGroupId] = useState<number | null>(null);
+  const { 
+    data: schedules = [], 
+    isLoading, 
+    error  } = useQuery({
+    queryKey: ['schedules', filterGroupId],
+    queryFn: () => {
+      if (filterGroupId) {
+        return schedulesApi.getAll({ group_id: filterGroupId });
+      }
+      return schedulesApi.getAll();
+    },
+  });
+  const createMutation = useMutation({
+    mutationFn: (data: CreateScheduleDto) => schedulesApi.create(data),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['schedules'] }),
+  });
 
-  const fetchSchedules = useCallback(async () => {
-    try {
-      setIsLoading(true);
-      setError(null);
-      const data = await schedulesApi.getAll();
-      setSchedules(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to fetch schedules");
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: Partial<CreateScheduleDto> }) => 
+      schedulesApi.update(id, data),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['schedules'] }),
+  });
 
-  useEffect(() => {
-    fetchSchedules();
-  }, [fetchSchedules]);
-
-  const getByGroupName = async (groupName: string) => {
-    return schedulesApi.getByGroupName(groupName);
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => schedulesApi.delete(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['schedules'] }),
+  });
+  const fetchAllSchedules = () => setFilterGroupId(null);
+  
+  const getByGroupId = async (groupId: number) => {
+    setFilterGroupId(groupId);
+    return []; 
   };
 
-  const createSchedule = async (data: CreateGroupScheduleDto) => {
-    const newSchedule = await schedulesApi.create(data);
-    setSchedules((prev) => [...prev, newSchedule]);
-    return newSchedule;
-  };
-
-  const updateSchedule = async (id: number, data: UpdateGroupScheduleDto) => {
-    const updated = await schedulesApi.update(id, data);
-    setSchedules((prev) =>
-      prev.map((schedule) => (schedule.id === id ? updated : schedule))
-    );
-    return updated;
-  };
-
-  const deleteSchedule = async (id: number) => {
-    await schedulesApi.delete(id);
-    setSchedules((prev) => prev.filter((schedule) => schedule.id !== id));
-  };
+  const createSchedule = async (data: CreateScheduleDto) => createMutation.mutateAsync(data);
+  const updateSchedule = async (id: number, data: Partial<CreateScheduleDto>) => updateMutation.mutateAsync({ id, data });
+  const deleteSchedule = async (id: number) => deleteMutation.mutateAsync(id);
 
   return {
     schedules,
     isLoading,
-    error,
-    refetch: fetchSchedules,
-    getByGroupName,
+    error: error ? (error as Error).message : null,
+    fetchAllSchedules,
+    getByGroupId,
     createSchedule,
     updateSchedule,
     deleteSchedule,

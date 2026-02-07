@@ -1,197 +1,129 @@
-import { useState } from "react";
-import { Search, Plus, MoreHorizontal, Loader2 } from "lucide-react";
+import { useState, useMemo, useCallback } from "react";
+import { Link } from "react-router-dom";
+import type { ColumnDef } from "@tanstack/react-table";
+import { Search, Plus, Loader2, Trash2 } from "lucide-react";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { useStudents } from "@/hooks";
+import { DataTable } from "@/components/ui/data-table";
+
+import { useStudents } from "@/hooks/useStudents";
+import type { Student } from "@/api";
 
 export function StudentsPage() {
   const [searchQuery, setSearchQuery] = useState("");
-  const { students, isLoading, error } = useStudents();
+  const { students, isLoading, error, deleteStudent } = useStudents();
 
-  const filteredStudents = students.filter(
-    (student) =>
-      `${student.firstname} ${student.surname}`.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      student.group_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      student.major.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-
-  const getInitials = (firstname: string, surname: string) => {
-    return `${firstname[0] || ""}${surname[0] || ""}`.toUpperCase();
-  };
-
-  const uniqueGroups = [...new Set(students.map((s) => s.group_name))];
-
-  if (isLoading) {
-    return (
-      <div className="flex h-96 items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-      </div>
+  const filteredStudents = useMemo(() => {
+    if (!students) return [];
+    const query = searchQuery.toLowerCase();
+    return students.filter((student) =>
+      student.name.toLowerCase().includes(query) ||
+      student.major.toLowerCase().includes(query) ||
+      String(student.group_id).includes(query)
     );
-  }
+  }, [students, searchQuery]);
 
-  if (error) {
-    return (
-      <div className="flex h-96 items-center justify-center">
-        <div className="text-center">
-          <p className="text-destructive">{error}</p>
-          <p className="text-sm text-muted-foreground mt-2">
-            Make sure the backend server is running
-          </p>
+  const handleExpel = useCallback(async (id: number) => {
+    if (window.confirm("Are you sure you want to remove this student?")) {
+      try {
+        await deleteStudent(id);
+      } catch (err) {
+        console.error("Failed to delete:", err);
+        alert("Failed to delete student. See console for details.");
+      }
+    }
+  }, [deleteStudent]);
+
+  const columns = useMemo<ColumnDef<Student>[]>(() => [
+    {
+      accessorKey: "name",
+      header: "Name",
+      cell: ({ row }) => (
+        <div className="flex items-center gap-3">
+          <Avatar>
+            <AvatarFallback>{row.original.name.slice(0, 2).toUpperCase()}</AvatarFallback>
+          </Avatar>
+          <div>
+            <div className="font-medium">{row.original.name}</div>
+            <div className="text-sm text-muted-foreground">ID: {row.original.id}</div>
+          </div>
         </div>
-      </div>
-    );
-  }
+      ),
+    },
+    {
+      accessorKey: "group_id",
+      header: "Group",
+      cell: ({ row }) => <Badge variant="outline">Group #{row.original.group_id}</Badge>,
+    },
+    {
+      accessorKey: "major",
+      header: "Major",
+    },
+    {
+      accessorKey: "course_year",
+      header: "Year",
+      cell: ({ row }) => <Badge variant="secondary">Year {row.original.course_year}</Badge>,
+    },
+    {
+      accessorKey: "gender",
+      header: "Gender",
+      cell: ({ row }) => <span className="capitalize">{row.original.gender}</span>,
+    },
+    {
+      id: "actions",
+      cell: ({ row }) => (
+        <div className="text-right">
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            onClick={() => handleExpel(row.original.id)}
+            className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+            title="Expel Student"
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
+      ),
+    },
+  ], [handleExpel]);
+
+  if (isLoading) return <div className="flex h-[50vh] items-center justify-center"><Loader2 className="animate-spin" /></div>;
+  if (error) return <div className="text-red-500">Error: {error}</div>;
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Students</h1>
-          <p className="text-muted-foreground">
-            Manage and view all registered students
-          </p>
+          <h2 className="text-3xl font-bold tracking-tight">Students</h2>
+          <p className="text-muted-foreground">Manage student body.</p>
         </div>
-        <Button>
-          <Plus className="mr-2 h-4 w-4" />
-          Add Student
-        </Button>
-      </div>
-
-      <div className="grid gap-4 md:grid-cols-3">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Students</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{students.length}</div>
-            <p className="text-xs text-muted-foreground">
-              Across all groups
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Groups</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{uniqueGroups.length}</div>
-            <p className="text-xs text-muted-foreground">
-              Active groups
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Majors</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {[...new Set(students.map((s) => s.major))].length}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Different majors
-            </p>
-          </CardContent>
-        </Card>
+        <Link to="/dashboard/students/add">
+          <Button><Plus className="mr-2 h-4 w-4" /> Add Student</Button>
+        </Link>
       </div>
 
       <Card>
         <CardHeader>
           <CardTitle>Student Directory</CardTitle>
-          <CardDescription>
-            A list of all students with their contact information and status
-          </CardDescription>
+          <CardDescription>Total Students: {students.length}</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="mb-4 flex items-center gap-4">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                placeholder="Search students..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10"
-              />
-            </div>
+          <div className="mb-4 flex items-center gap-2">
+            <Search className="h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search by name, major, or group ID..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="max-w-sm"
+            />
           </div>
 
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Student</TableHead>
-                <TableHead>Group</TableHead>
-                <TableHead>Major</TableHead>
-                <TableHead>Course Year</TableHead>
-                <TableHead>Gender</TableHead>
-                <TableHead className="w-[50px]"></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredStudents.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
-                    No students found
-                  </TableCell>
-                </TableRow>
-              ) : (
-                filteredStudents.map((student) => (
-                  <TableRow key={student.id}>
-                    <TableCell>
-                      <div className="flex items-center gap-3">
-                        <Avatar className="h-9 w-9">
-                          <AvatarFallback className="bg-primary/10 text-primary text-xs">
-                            {getInitials(student.firstname, student.surname)}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div>
-                          <div className="font-medium">
-                            {student.firstname} {student.surname}
-                          </div>
-                          <div className="text-sm text-muted-foreground">
-                            ID: {student.id}
-                          </div>
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{student.group_name}</Badge>
-                    </TableCell>
-                    <TableCell>
-                      <span className="text-sm">{student.major}</span>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="secondary">Year {student.course_year}</Badge>
-                    </TableCell>
-                    <TableCell>
-                      <span className="text-sm capitalize">{student.gender}</span>
-                    </TableCell>
-                    <TableCell>
-                      <Button variant="ghost" size="icon">
-                        <MoreHorizontal className="h-4 w-4" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
+          <DataTable columns={columns} data={filteredStudents} />
+          
         </CardContent>
       </Card>
     </div>

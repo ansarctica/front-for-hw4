@@ -1,4 +1,3 @@
-// Auth Types
 export interface LoginDto {
   email: string;
   password: string;
@@ -9,22 +8,25 @@ export interface RegisterDto {
   password: string;
 }
 
-export interface UserResponse {
+export interface AuthResponse {
+  token: string;
+  user: User;
+}
+
+export interface User {
   id: number;
   email: string;
 }
-
-export interface AuthResponse {
-  access_token: string;
-  user: UserResponse;
+export interface Subject {
+  name: string;
 }
-
-// Student Types
+export interface Group {
+  id: number;
+}
 export interface Student {
   id: number;
-  firstname: string;
-  surname: string;
-  group_name: string;
+  name: string;
+  group_id: number;
   major: string;
   course_year: number;
   gender: string;
@@ -32,9 +34,8 @@ export interface Student {
 }
 
 export interface CreateStudentDto {
-  firstname: string;
-  surname: string;
-  group_name: string;
+  name: string;
+  group_id: number;
   major: string;
   course_year: number;
   gender: string;
@@ -42,60 +43,70 @@ export interface CreateStudentDto {
 }
 
 export interface UpdateStudentDto {
-  firstname?: string;
-  surname?: string;
-  group_name?: string;
+  name?: string;
+  group_id?: number;
   major?: string;
   course_year?: number;
   gender?: string;
   birth_date?: string;
 }
-
-// Group Schedule Types
-export interface GroupSchedule {
+export interface Schedule {
   id: number;
-  group_name: string;
-  schedule: string[];
+  group_id: number;
+  subject: string;
+  start_time: string;
+  end_time: string;
 }
 
-export interface CreateGroupScheduleDto {
-  group_name: string;
-  schedule: string[];
+export interface CreateScheduleDto {
+  group_id: number;
+  subject: string;
+  start_time: string;
+  end_time: string;
 }
-
-export interface UpdateGroupScheduleDto {
-  group_name?: string;
-  schedule?: string[];
-}
-
-// Attendance Types
 export interface Attendance {
   id: number;
   subject_name: string;
-  subject_id: number;
   visit_day: string;
   visited: boolean;
-  student_firstname: string;
-  student_surname: string;
   student_id: number;
+  student_firstname?: string; 
+  student_surname?: string;
 }
 
 export interface CreateAttendanceDto {
   subject_name: string;
-  subject_id: number;
+  student_id: number;
   visit_day: string;
   visited: boolean;
-  student_firstname: string;
-  student_surname: string;
-  student_id: number;
+}
+export interface Assignment {
+  id: number;
+  name: string;
+  subject_name: string;
+  weight: number;
+  date: string;
 }
 
-export interface UpdateAttendanceDto {
-  subject_name?: string;
-  subject_id?: number;
-  visit_day?: string;
-  visited?: boolean;
-  student_firstname?: string;
-  student_surname?: string;
-  student_id?: number;
+export interface CreateAssignmentDto {
+  name: string;
+  subject_name: string;
+  weight: number;
+  date: string;
+}
+export interface Grade {
+  id: number;
+  student_id: number;
+  assignment_id: number;
+  mark: number;
+}
+
+export interface CreateGradeDto {
+  student_id: number;
+  assignment_id: number;
+  mark: number;
+}
+export interface StudentGPA {
+  student_id: number;
+  gpa: number;
 }

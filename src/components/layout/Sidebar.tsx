@@ -5,6 +5,7 @@ import {
   ClipboardCheck,
   LogOut,
   GraduationCap,
+  BookOpen
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -26,6 +27,11 @@ const navItems = [
     title: "Attendance",
     href: "/dashboard/attendance",
     icon: ClipboardCheck,
+  },
+  {
+    title: "Grades & Assignments",
+    href: "/dashboard/grades",
+    icon: BookOpen, 
   },
 ];
 
