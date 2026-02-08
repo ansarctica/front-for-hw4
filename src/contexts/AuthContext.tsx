@@ -1,4 +1,4 @@
-import { createContext, useContext, type ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, type ReactNode } from "react";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { authApi, type User, type LoginDto, type RegisterDto, type AuthResponse } from "@/api";
 
@@ -15,30 +15,37 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
-  const token = localStorage.getItem("token");
+  
+  const [token, setToken] = useState<string | null>(() => localStorage.getItem("token"));
+
   const { data: user = null, isLoading } = useQuery({
     queryKey: ["me"],
     queryFn: authApi.getMe,
     enabled: !!token, 
     retry: false,
   });
+
   const loginMutation = useMutation({
     mutationFn: authApi.login,
     onSuccess: (response) => {
       localStorage.setItem("token", response.token);
+      setToken(response.token);
       queryClient.setQueryData(["me"], response.user);
     },
   });
+
   const registerMutation = useMutation({
     mutationFn: authApi.register,
     onSuccess: (response) => {
       localStorage.setItem("token", response.token);
+      setToken(response.token);
       queryClient.setQueryData(["me"], response.user);
     },
   });
 
   const logout = () => {
     localStorage.removeItem("token");
+    setToken(null);
     queryClient.setQueryData(["me"], null);
     queryClient.removeQueries({ queryKey: ["me"] });
   };

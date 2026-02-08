@@ -1,7 +1,7 @@
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Link, Navigate } from "react-router-dom"; 
+import { Link, Navigate, useNavigate } from "react-router-dom"; 
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -34,17 +34,20 @@ export function LoginPage() {
   } = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
   });
+  const navigate = useNavigate();
   if (isAuthenticated) {
     return <Navigate to="/dashboard/students" replace />;
   }
 
   const onSubmit = async (data: LoginFormValues) => {
-    try {
-      await login(data);
-    } catch (err) {
-      setError("root", { message: "Invalid email or password" });
-    }
-  };
+  try {
+    await login(data);
+    
+    navigate("/dashboard/students", { replace: true });
+  } catch (err) {
+    setError("root", { message: "Invalid email or password" });
+  }
+};
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 p-4">
